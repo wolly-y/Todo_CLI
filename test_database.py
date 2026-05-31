@@ -1,141 +1,91 @@
+import sqlite3
 import pytest
-from models import (
-    create_task,
-    list_tasks,
-    change_status,
-    edit_task,
-    remove_task,
-    get_overdue,
-    get_stats,
-    format_task,
-    format_stats,
-    VALID_PRIORITIES,
-    VALID_STATUSES,
-)
-
+import database
 import tempfile
 import os
-import database
+from database import (
+    init_db,
+    add_task,
+    get_all_tasks,
+    update_status,
+    update_task,
+    delete_task,
+    get_overdue_tasks,
+    get_statistics,
+)
+from datetime import date, timedelta
 
 @pytest.fixture(autouse=True)
-def setup_db():
+def test_db():
+    """Создаем временный файл БД для тестов."""
     fd, db_path = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     database.DB_PATH = db_path
-    database.init_db()
+    init_db()
     yield
     os.unlink(db_path)
 
-def test_create_task_success():
-    task_id = create_task('Тест', 'Описание', 'высокий', '2026-12-31')
+def test_add_task():
+    task_id = add_task('Тестовая задача', "Описание", "высокий", "2026-12-31")
     assert task_id == 1
+    tasks = get_all_tasks()
+    assert len(tasks) == 1
+    assert tasks[0]["title"] == "Тестовая задача"
+    assert tasks[0]["priority"] == "высокий"
 
-def test_create_task_empty_title():
-    with pytest.raises(ValueError, match='Название задачи не может быть пустым'):
-        create_task('')
+def test_add_duplicate():
+    add_task('Задача')
+    with pytest.raises(ValueError, match='уже существует'):
+        add_task('Задача')
 
-def test_create_task_whitespace_title():
-    with pytest.raises(ValueError, match='Название задачи не может быть пустым'):
-        create_task('   ')
+def test_get_all_tasks_sorting():
+    add_task('Б', priority='средний')
+    add_task('А', priority='высокий')
+    tasks = get_all_tasks(sort_by='priority')
+    assert tasks[0]['title'] == 'А'
 
-def test_create_task_invalid_priority():
-    with pytest.raises(ValueError, match='Недопустимый приоритет'):
-        create_task('Задача', priority='срочный')
-
-def test_create_task_default_values():
-    task_id = create_task('Задача')
-    tasks = list_tasks()
-    assert tasks[0]['priority'] == 'средний'
-    assert tasks[0]['deadline'] == 'Без дедлайна'
-    assert tasks[0]['description'] == ''
-
-def test_change_status_success():
-    create_task('Задача')
-    change_status(1, 'в работе')
-    tasks = list_tasks()
+def test_update_status():
+    add_task('Задача')
+    update_status(1, 'в работе')
+    tasks = get_all_tasks()
     assert tasks[0]['status'] == 'в работе'
 
-def test_change_status_invalid_status():
-    create_task('Задача')
-    with pytest.raises(ValueError, match='Недопустимый статус'):
-        change_status(1, 'завершена')
+def test_update_status_invalid_id():
+    with pytest.raises(ValueError, match='не найдена'):
+        update_status(999, 'сделано')
 
-def test_change_status_invalid_id():
-    with pytest.raises(ValueError):
-        change_status(999, 'сделано')
-
-def test_edit_task_success():
-    create_task('Задача', 'Старое', 'низкий')
-    edit_task(1, 'Новое', 'высокий')
-    task = list_tasks()[0]
+def test_update_task():
+    add_task('Задача', 'Старое', 'низкий')
+    update_task(1, 'Новое', 'высокий')
+    task = get_all_tasks()[0]
     assert task['description'] == 'Новое'
     assert task['priority'] == 'высокий'
 
-def test_edit_task_invalid_priority():
-    create_task('Задача')
-    with pytest.raises(ValueError, match='Недопустимый приоритет'):
-        edit_task(1, 'Описание', 'сверхсрочный')
+def test_delete_task():
+    add_task('Задача')
+    delete_task(1)
+    assert len(get_all_tasks()) == 0
 
-def test_remove_task_success():
-    create_task('Задача')
-    remove_task(1)
-    assert len(list_tasks()) == 0
+def test_delete_task_invalid_id():
+    with pytest.raises(ValueError, match='не найдена'):
+        delete_task(999)
 
-def test_remove_task_invalid_id():
-    with pytest.raises(ValueError):
-        remove_task(999)
+def test_get_overdue_tasks():
+    today = date.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    tomorrow = (today + timedelta(days=1)).isoformat()
+    add_task('Просрочено', deadline=yesterday)
+    add_task('Не просрочено', deadline=tomorrow)
+    add_task('Без дедлайна')
+    overdue = get_overdue_tasks()
+    assert len(overdue) == 1
+    assert overdue[0]['title'] == 'Просрочено'
 
-def test_list_tasks_invalid_status():
-    create_task('Задача')
-    with pytest.raises(ValueError, match='Недопустимый статус'):
-        list_tasks(status_filter='неизвестный')
-
-def test_format_task():
-    task = {
-        'id': 1,
-        'title': 'Тест',
-        'status': 'новая',
-        'priority': 'высокий',
-        'deadline': '2026-12-31',
-        'description': 'Описание'
-    }
-    result = format_task(task)
-    assert '[1] Тест' in result
-    assert 'Статус: новая' in result
-    assert 'Приоритет: высокий' in result
-    assert 'Дедлайн: 2026-12-31' in result
-    assert 'Описание' in result
-
-def test_format_task_empty_description():
-    task = {
-        'id': 2,
-        'title': 'Без описания',
-        'status': 'сделано',
-        'priority': 'низкий',
-        'deadline': 'Без дедлайна',
-        'description': ''
-    }
-    result = format_task(task)
-    assert '—' in result
-
-def test_format_stats():
-    stats = {
-        'total': 5,
-        'by_status': {'новая': 3, 'в работе': 1, 'сделано': 1},
-        'by_priority': {'высокий': 2, 'средний': 2, 'низкий': 1}
-    }
-    result = format_stats(stats)
-    assert 'Всего задач: 5' in result
-    assert 'новая: 3' in result
-    assert 'высокий: 2' in result
-
-def test_get_overdue_empty():
-    overdue = get_overdue()
-    assert isinstance(overdue, list)
-    assert len(overdue) == 0
-
-def test_get_stats_empty():
-    stats = get_stats()
-    assert stats['total'] == 0
-    assert stats['by_status'] == {}
-    assert stats['by_priority'] == {}
+def test_get_statistics():
+    add_task('Задача 1', priority='высокий')
+    add_task('Задача 2', priority='низкий')
+    update_status(1, 'сделано')
+    stats = get_statistics()
+    assert stats['total'] == 2
+    assert stats['by_status'] == {'новая': 1, 'сделано': 1}
+    assert stats['by_priority'] == {'высокий': 1, 'низкий': 1}
