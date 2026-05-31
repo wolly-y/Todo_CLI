@@ -4,8 +4,9 @@ from datetime import date
 DB_PATH = 'todo.db'
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    """Создает таблицу tasks, если она еще не существует."""
 
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -24,6 +25,21 @@ def init_db():
     conn.close()
 
 def add_task(title, description='', priority='средний', deadline='Без дедлайна'):
+    """Добавляет новую задачу в базу данных.
+
+    Args:
+        title: Название задачи (уникальное, не пустое).
+        description: Описание задачи (по умолчанию пустое).
+        priority: Приоритет: 'высокий', 'средний', 'низкий'.
+        deadline: Дедлайн в формате ГГГГ-ММ-ДД или 'Без дедлайна'.
+
+    Returns:
+        id созданной задачи.
+
+    Raises:
+        ValueError: Если задача с таким названием уже существует.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -45,6 +61,16 @@ def add_task(title, description='', priority='средний', deadline='Без 
     return task_id
 
 def get_all_tasks(status_filter=None, sort_by='created_at'):
+    """Возвращает список всех задач с возможностью фильтрации и сортировки.
+
+    Args:
+        status_filter: Фильтр по статусу или None (все задачи).
+        sort_by: Поле сортировки: 'created_at', 'priority', 'deadline'.
+
+    Returns:
+        Список словарей с данными задач.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -70,6 +96,16 @@ def get_all_tasks(status_filter=None, sort_by='created_at'):
     return [dict(row) for row in rows]
 
 def update_status(task_id, new_status):
+    """Обновляет статус задачи.
+
+    Args:
+         task_id: ID задачи.
+         new_status: Новый статус.
+
+    Raises:
+        ValueError: Если задача с таким id не найдена.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -82,6 +118,17 @@ def update_status(task_id, new_status):
     conn.close()
 
 def update_task(task_id, description, priority):
+    """Обновляет описание и приоритет задачи.
+
+    Args:
+         task_id: ID задачи.
+         description: Новое описание.
+         priority: Новый приоритет.
+
+    Raises:
+        ValueError: Если задача с таким id не найдена.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -96,6 +143,15 @@ def update_task(task_id, description, priority):
     conn.close()
 
 def delete_task(task_id):
+    """Удаляет задачу по id.
+
+    Args:
+        task_id: ID задачи.
+
+    Raises:
+        ValueError: Если задача с таким id не найдена.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -108,6 +164,14 @@ def delete_task(task_id):
     conn.close()
 
 def get_overdue_tasks():
+    """Возвращает список просроченных задач.
+
+    Просроченная задача - дедлайн прошел, статус не 'сделано', дедлайн не 'Без дедлайна'.
+
+    Returns:
+        Список словарей с данными просроченных задач.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -126,6 +190,15 @@ def get_overdue_tasks():
     return [dict(row) for row in rows]
 
 def get_statistics():
+    """Возвращает статистику по задачам.
+
+    Returns:
+        Словарь с ключами:
+        - 'total': общее количество задач,
+        - 'by_status': словарь {статус: количество},
+        - 'by_priority': словарь {приоритет: количество}.
+    """
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
